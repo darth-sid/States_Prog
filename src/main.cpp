@@ -339,20 +339,25 @@ void auton2(){
 void auton3(){
 	FrontClamp.set_value(false);
 	pros::delay(200);
-	drive(180000,0,500,.015,0,0.082,3000);
+	drive(185000,0,500,.015,0,0.082,2000);
 	pros::delay(300);
 	//drive(-60000,0,500,.02,0,0);
 	/*pros::delay(500);
 	drive(120000,0,500,.02,0,0);*/
-	drive(-90000,0,500,.015,0,0.082,3000);
-	pros::delay(500);
+	drive(-90000,0,500,.015,0,0.082,2000);
+	pros::delay(300);
 	//FrontClamp.set_value(true);
 	/*pros::delay(1000);
 	drive(-60000,0,500,.02,0,0);*/
 	//pros::delay(1500);
-	setAngle(-80, 0.1, 50, 0, 300, 3000);
-	pros::delay(500);
-	driveRel(-30000,500,.015,0,0.082,3000);
+	setAngle(-80, 0.1, 50, 0, 300, 2000);
+	pros::delay(300);
+	driveRel(-40000,500,.015,0,0.082,2000);
+	BackClamp.set_value(true);
+	pros::delay(300);
+	setAngle(-100, 0.1, 50, 0, 300, 2000);
+	pros::delay(300);
+	driveRel(100000,500,.015,0,0.082,2000);
 
 }
 
