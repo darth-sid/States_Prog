@@ -60,6 +60,8 @@ pros::Motor driveRight4(DRIVERIGHT4PORT , MOTOR_GEARSET_06,true);
 
 pros::Controller Vcontroller(pros::E_CONTROLLER_MASTER);
 
+pros::Imu inertial(INERTIAL_PORT);
+
 pros::ADIDigitalOut FrontClamp(PNEUM_PORT_1, true);
 pros::ADIDigitalOut BackClamp(PNEUM_PORT_2);
 
@@ -201,7 +203,7 @@ double getAngle(){
 	double TRACKER_SCALAR = 1.057;
 	double encoder_angle = (right_rot_pos()*2.75*M_PI/36000 - left_rot_pos()*2.75*M_PI/36000)/(TRACKER_DISTANCE)*TRACKER_SCALAR;
   //pros::lcd::set_text(1, std::to_string(inertial.get_yaw()));
-  return encoder_angle;
+  return inertial.get_rotation();//encoder_angle;
   //return encoder_angle;
 }
 
@@ -228,11 +230,11 @@ void updateCoords(){
 void setAngle(double target, double tolerance, double kP, double kI, double kD, double time){
 	brake_hold();
 	double preverror = 0;
-	double error = target-getAngle()*180/M_PI;
+	double error = target-getAngle();
 	double integral = 0;
 	double ref = pros::millis();
-	while (fabs(error) > tolerance){
-		error = target-getAngle()*180/M_PI;
+	while (fabs(error) > tolerance && driveLeft1.is_stopped()){
+		error = target-getAngle();
 		double derivative = error-preverror;
 		double pwr = error*kP + integral*kI + derivative*kD;
 		setDriveMotors(pwr, -pwr);
@@ -246,7 +248,31 @@ void setAngle(double target, double tolerance, double kP, double kI, double kD, 
 	brake_coast();
 }
 
-void drive(double targetx, double targety, double tolerance, double kP, double kI, double kD){
+void driveRel(double target, double tolerance, double kP, double kI, double kD, double time){
+	//tune constants
+//	setAngle(target_angle,10,2,0,0);
+	brake_hold();
+	double preverror = 0;
+	double error = target;//sqrt(pow(targety,2)+pow(targetx,2))-sqrt(pow(back_rot_pos(), 2)+pow((left_rot_pos()+right_rot_pos())/2, 2));
+	double integral = 0;
+	double refT = pros::millis();
+	double ref = (left_rot_pos()+right_rot_pos())/2;
+	while(fabs(error)>tolerance  && driveLeft1.is_stopped()){
+		error = target-((left_rot_pos()+right_rot_pos())/2 - ref);//sqrt(pow(targety,2)+pow(targetx,2))-sqrt(pow(back_rot_pos(), 2)+pow((left_rot_pos()+right_rot_pos())/2, 2));
+		double derivative = error-preverror;
+		double pwr = error*kP + integral*kI + derivative*kD;
+		setDriveMotors(pwr,pwr);
+		pros::lcd::set_text(1, std::to_string(error));
+		preverror = error;
+		integral += error;
+		if (pros::millis()-refT > time){break;}
+		pros::delay(10);
+	}
+	setDriveMotors(0,0);
+	brake_coast();
+}
+
+void drive(double targetx, double targety, double tolerance, double kP, double kI, double kD, double time){
 	double target_angle = atan(targety/targetx);
 	//tune constants
 //	setAngle(target_angle,10,2,0,0);
@@ -255,7 +281,8 @@ void drive(double targetx, double targety, double tolerance, double kP, double k
 	double preverror = 0;
 	double error = sqrt(pow(targety,2)+pow(targetx,2))-sqrt(pow(back_rot_pos(), 2)+pow((left_rot_pos()+right_rot_pos())/2, 2));
 	double integral = 0;
-	while(fabs(error)>tolerance){
+	double ref = pros::millis();
+	while(fabs(error)>tolerance  && driveLeft1.is_stopped()){
 		error = sqrt(pow(targety,2)+pow(targetx,2))-sqrt(pow(back_rot_pos(), 2)+pow((left_rot_pos()+right_rot_pos())/2, 2));
 		double derivative = error-preverror;
 		double pwr = error*kP + integral*kI + derivative*kD;
@@ -263,10 +290,15 @@ void drive(double targetx, double targety, double tolerance, double kP, double k
 		pros::lcd::set_text(1, std::to_string(error));
 		preverror = error;
 		integral += error;
+		if (pros::millis()-ref > time){break;}
 		pros::delay(10);
 	}
 	setDriveMotors(0,0);
 	brake_coast();
+}
+
+void drive(double targetx, double targety, double tolerance, double kP, double kI, double kD){
+	drive(targetx,targety,tolerance,kP,kI,kD,100000);
 }
 //side mogo
 void auton1(){
@@ -287,25 +319,47 @@ void auton1(){
 	setAngle(-80, 1, 3, 0, 0, 5000);
 	pros::lcd::set_text(2, std::to_string(32));
 }
+
 //tall mogo
 void auton2(){
 	drive(60000,0,500,.008,0,0);
 	pros::delay(200);
-	setAngle(-37, 0.5, 4, 0, 0, 1000);
+	setAngle(-45, 0.5, 4, 0, 0, 1000);
 	//pros::delay(100);
 	FrontClamp.set_value(false);
 	pros::delay(200);
 	drive(56/ENC_TO_INCH,0,1000,.01,0,0);
 	pros::delay(400);
-	
+
 	drive(-60000,0,500,.008,0,0);
 	FrontClamp.set_value(true);
 }
 
+//side mogo revised
+void auton3(){
+	FrontClamp.set_value(false);
+	pros::delay(200);
+	drive(180000,0,500,.015,0,0.082,3000);
+	pros::delay(300);
+	//drive(-60000,0,500,.02,0,0);
+	/*pros::delay(500);
+	drive(120000,0,500,.02,0,0);*/
+	drive(-90000,0,500,.015,0,0.082,3000);
+	pros::delay(500);
+	//FrontClamp.set_value(true);
+	/*pros::delay(1000);
+	drive(-60000,0,500,.02,0,0);*/
+	//pros::delay(1500);
+	setAngle(-80, 0.1, 50, 0, 300, 3000);
+	pros::delay(500);
+	driveRel(-30000,500,.015,0,0.082,3000);
+
+}
 
 void initialize() {
 	pros::lcd::initialize();
 	tare_rot();
+	inertial.reset();
 	/*change=true;
 	auton_names.insert(std::make_pair(1,"auton1"));
 	auton_names.insert(std::make_pair(2,"auton2"));
@@ -347,16 +401,22 @@ void disabled() {}
 void competition_initialize() {}
 
 void autonomous() {
-	auton2();
+
+	auton3();
+	//pidref:
+	//setAngle(-180, 0.1, 50, 0, 300, 5000);
+	//drive(200000,0,500,0.015,0,0.082,5000);
+	//pros::lcd::set_text(7,std::to_string(getAngle()));
+	//pros::lcd::set_text(7,std::to_string(100000-(left_rot_pos()+right_rot_pos())/2));
 }
 
 void opcontrol() {
 	while(true){
 		setDrive();
 		clamps();
-		/*pros::lcd::set_text(1, std::to_string(getAngle()*180/M_PI));
+		pros::lcd::set_text(1, std::to_string(getAngle()));
 		pros::lcd::set_text(2, "y: " + std::to_string(pos_y));
-		pros::lcd::set_text(3, "x: " + std::to_string(pos_x));*/
+		pros::lcd::set_text(3, "x: " + std::to_string(pos_x));
 		//updateCoords();
 		pros::delay(10);
 	}
