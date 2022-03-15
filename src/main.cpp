@@ -326,7 +326,7 @@ float curv(float pts[][2], int pti){
   return 1/r;
 }
 
-void driveTurn(double x, double y, double end_angle, double tolerance, double kP, double kI, double kD, double time){
+void driveTurn(double x, double y, double end_angle, double tolerance, double scalar, double time){
 
 	x += 0.000000001;
 	float d = sqrt(pow(x-pos_x,2)+pow(y-pos_y,2));
@@ -334,15 +334,12 @@ void driveTurn(double x, double y, double end_angle, double tolerance, double kP
 	float c = (2*dx)/pow(d,2);
 	float pts[][2] = {{pos_x,pos_y},{x,y},{x*(1+cos(end_angle)),y*(1+sin(end_angle))}};
 	float v = std::min((float)MAX_VEL, TURN_VEL_K/curv(pts,1));
-	float l = v*(2+c*T)/2;
-	float r = v*(2+c*T)/2;
+	float l = (v*(2+c*T)/2)//*y/abs(y);
+	float r = (v*(2-c*T)/2)//*y/abs(y);
 	while(true){
+		setDriveMotors(l*scalar,r*scalar);
 		pros::lcd::set_text(1, "l:" + std::to_string(l));
 		pros::lcd::set_text(2, "r:" + std::to_string(r));
-		pros::lcd::set_text(3, "atan:" + std::to_string(atan((y-pos_y)/(x-pos_x))));
-		pros::lcd::set_text(4, "O:" + std::to_string(getAngle()*DEG_TO_RAD));
-		pros::lcd::set_text(5, "dx:" + std::to_string(dx));
-		pros::lcd::set_text(6, "c:" + std::to_string(c));
 	}
 
 
@@ -459,7 +456,7 @@ void competition_initialize() {}
 
 void autonomous() {
 
-	driveTurn(10, -10, 45, 1, 0, 0, 0, 0);
+	driveTurn(10, -10, 45, 1, 1, 0);
 	//pidref:
 	//setAngle(-180, 0.1, 50, 0, 300, 5000);
 	//drive(200000,0,500,0.015,0,0.082,5000);
