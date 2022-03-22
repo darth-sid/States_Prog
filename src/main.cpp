@@ -212,6 +212,10 @@ double getAngle(){
   //return encoder_angle;
 }
 
+double getRad(){
+	return getAngle()*DEG_TO_RAD;
+}
+
 //odom :D
 void updateCoords(){
 	double angle = getAngle();
@@ -326,20 +330,71 @@ float curv(float pts[][2], int pti){
   return 1/r;
 }
 
-void driveTurn(double x, double y, double end_angle, double tolerance, double scalar, double time){
+void driveBetter(double targetx, double targety, double tolerance, double kP, double kI, double kD, double time){
+	double target_angle = atan(targety/targetx);
+	//tune constants
+	setAngle(target_angle,10,1,0,3);
+
+	brake_hold();
+	bool stop = false;
+	double preverror = 0;
+	//double error = sqrt(pow(targety,2)+pow(targetx,2))-sqrt(pow(back_rot_pos(), 2)+pow((left_rot_pos()+right_rot_pos())/2, 2));
+	double integral = 0;
+	double ref = pros::millis();
+
+	while(!stop){
+		double a = atan(targety/targetx) - getRad();
+		//double dir = (a > (getAngle()+90)%360 && a < (getAngle()+270)%360) ? ;
+		double dir = cos(a)/fabs(cos(a));
+
+		double error = dir*sqrt(pow(targety-pos_y,2)+pow(targetx-pos_x,2));
+		double derivative = error-preverror;
+		double pwr = error*kP + integral*kI + derivative*kD;
+		preverror = error;
+		integral += error;
+
+		setDriveMotors(pwr,pwr);
+		pros::lcd::set_text(1, std::to_string(error));
+
+		if (pros::millis()-ref > time || fabs(error) < tolerance) stop = true;
+		pros::delay(10);
+	}
+	setDriveMotors(0,0);
+	brake_coast();
+
+
+}
+
+void driveTurn(float x, float y, float end_angle, float tolerance, float kP, float time){
 
 	x += 0.000000001;
-	while(d > tolerance){
+	bool stop = false;
+	while(!stop){
 		float d = sqrt(pow(x-pos_x,2)+pow(y-pos_y,2));
-		float dx = cos(atan((y-pos_y)/(x-pos_x))+getAngle()*DEG_TO_RAD)*d;
-		float c = (2*dx)/pow(d,2);
-		float pts[][2] = {{pos_x,pos_y},{x,y},{x*(1+cos(end_angle)),y*(1+sin(end_angle))}};
-		float v = std::min((float)MAX_VEL, TURN_VEL_K/curv(pts,1));
-		float l = (v*(2+c*T)/2)//*y/abs(y);
-		float r = (v*(2-c*T)/2)//*y/abs(y);
-		setDriveMotors(l*scalar,r*scalar);
-		pros::lcd::set_text(1, "l:" + std::to_string(l));
-		pros::lcd::set_text(2, "r:" + std::to_string(r));
+		//float dx = cos(atan((y-pos_y)/(x-pos_x))+getAngle()*DEG_TO_RAD)*d;
+		float pts[][2] = {{pos_x,pos_y},{x,y},{x+cos(end_angle),y+sin(end_angle)}};
+		float c = curv(pts,1);//(2*dx)/pow(d,2);
+		float v = std::min((float)MAX_VEL, TURN_VEL_K/c);
+		float l = (v*(2+c*T)/2);//*y/abs(y);
+		float r = (v*(2-c*T)/2);//*y/abs(y);
+		float p = d*kP;
+		float pwr = (p > 127) ? 127 : p;
+		float lpwr = pwr;
+		float rpwr = pwr;
+		if (l > r){
+			rpwr *= (r/l);
+			//setDriveMotors(pwr,pwr*(r/l));
+		}
+		else if (r > l){
+			lpwr *= (l/r);
+			//setDriveMotors(pwr*(l/r),pwr);
+		}
+
+		pros::lcd::set_text(1, "l:" + std::to_string(lpwr));
+		pros::lcd::set_text(2, "r:" + std::to_string(rpwr));
+		//setDriveMotors(lpwr,rpwr);
+		if (d < tolerance) stop = true;
+		pros::delay(10);
 	}
 }
 
@@ -452,8 +507,8 @@ void disabled() {}
 void competition_initialize() {}
 
 void autonomous() {
-
-	driveTurn(10, -10, 45, 1, 1, 0);
+	//auton3();
+	driveTurn(10, 10, 45, 1, 50, 0);
 	//pidref:
 	//setAngle(-180, 0.1, 50, 0, 300, 5000);
 	//drive(200000,0,500,0.015,0,0.082,5000);
