@@ -218,7 +218,7 @@ double getRad(){
 
 //odom :D
 void updateCoords(){
-	double angle = getAngle();
+	double angle = getRad();
 	double delta_angle = angle-prev_angle;
 	//tracked values in inches(ideal centidegrees to inches conversion: 2.75*pi/36000)
 	double curr_y_encoder = (left_rot_pos()+right_rot_pos())/2;
@@ -230,9 +230,17 @@ void updateCoords(){
 	if(delta_local_y < 0) angle += M_PI;
 	double adjustment = atan((delta_local_x)/(delta_local_y));
 	adjustment = (std::isnan(adjustment)) ? M_PI/2 : adjustment;
-	pros::lcd::set_text(1, std::to_string((angle-adjustment)));
-	pos_x += cos(angle - adjustment)*distance*ENC_TO_INCH;
-	pos_y += sin(angle - adjustment)*distance*ENC_TO_INCH;
+	angle -= adjustment;
+	/*pros::lcd::set_text(1, std::to_string((getRad()-adjustment)));
+	pros::lcd::set_text(2, std::to_string(getRad()));
+	pros::lcd::set_text(3, std::to_string(adjustment));
+	pros::lcd::set_text(4, std::to_string(cos(getRad() - adjustment)));*/
+	pros::lcd::set_text(5, std::to_string(cos(angle)*distance*ENC_TO_INCH));
+	pros::lcd::set_text(6, std::to_string(sin(angle)*distance*ENC_TO_INCH));
+	double dx = (std::isnan(cos(angle)*distance*ENC_TO_INCH)) ? 0 : cos(angle)*distance*ENC_TO_INCH;
+	double dy = (std::isnan(sin(angle)*distance*ENC_TO_INCH)) ? 0 : sin(angle)*distance*ENC_TO_INCH;
+	pos_x += dx;
+	pos_y += dy;
 	prev_x_encoder = curr_x_encoder;
 	prev_y_encoder = curr_y_encoder;
 	prev_angle = angle;
@@ -245,6 +253,7 @@ void setAngle(double target, double tolerance, double kP, double kI, double kD, 
 	double integral = 0;
 	double ref = pros::millis();
 	while (fabs(error) > tolerance && driveLeft1.is_stopped()){
+		updateCoords();
 		error = target-getAngle();
 		double derivative = error-preverror;
 		double pwr = error*kP + integral*kI + derivative*kD;
@@ -333,7 +342,7 @@ float curv(float pts[][2], int pti){
 void driveBetter(double targetx, double targety, double tolerance, double kP, double kI, double kD, double time){
 	double target_angle = atan(targety/targetx);
 	//tune constants
-	setAngle(target_angle,10,1,0,3);
+	setAngle(target_angle,10,1,0,3,5000);
 
 	brake_hold();
 	bool stop = false;
@@ -343,7 +352,9 @@ void driveBetter(double targetx, double targety, double tolerance, double kP, do
 	double ref = pros::millis();
 
 	while(!stop){
-		double a = atan(targety/targetx) - getRad();
+		updateCoords();
+		double a = atan((targetx-pos_x)/(targety-pos_y)) - getRad();
+		a += M_PI/4;
 		//double dir = (a > (getAngle()+90)%360 && a < (getAngle()+270)%360) ? ;
 		double dir = cos(a)/fabs(cos(a));
 
@@ -354,9 +365,9 @@ void driveBetter(double targetx, double targety, double tolerance, double kP, do
 		integral += error;
 
 		setDriveMotors(pwr,pwr);
-		pros::lcd::set_text(1, std::to_string(error));
+		pros::lcd::set_text(1, std::to_string(a));
 
-		if (pros::millis()-ref > time || fabs(error) < tolerance) stop = true;
+		if (pros::millis()-ref > time || (fabs(error) < tolerance && driveLeft1.is_stopped())) stop = true;
 		pros::delay(10);
 	}
 	setDriveMotors(0,0);
@@ -508,7 +519,7 @@ void competition_initialize() {}
 
 void autonomous() {
 	//auton3();
-	driveTurn(10, 10, 45, 1, 50, 0);
+	driveBetter(10,0,1,15,0,0,5000);
 	//pidref:
 	//setAngle(-180, 0.1, 50, 0, 300, 5000);
 	//drive(200000,0,500,0.015,0,0.082,5000);
@@ -518,11 +529,13 @@ void autonomous() {
 
 void opcontrol() {
 	while(true){
+		updateCoords();
 		setDrive();
 		clamps();
-		pros::lcd::set_text(1, std::to_string(getAngle()));
+		//pros::lcd::set_text(1, std::to_string(getAngle()));
 		pros::lcd::set_text(2, "y: " + std::to_string(pos_y));
 		pros::lcd::set_text(3, "x: " + std::to_string(pos_x));
+
 		//updateCoords();
 		pros::delay(10);
 	}
