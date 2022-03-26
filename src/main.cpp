@@ -206,10 +206,10 @@ float back_rot_pos(){
 }
 
 double getAngle(){
-	double TRACKER_SCALAR = 1.057;
+	double TRACKER_SCALAR = 1;
 	double encoder_angle = ((right_rot_pos()*ENC_TO_INCH - left_rot_pos()*ENC_TO_INCH)/(TRACKER_DISTANCE))*TRACKER_SCALAR;
-  return inertial.get_rotation();
-  //return encoder_angle;
+  //return inertial.get_rotation();
+  return encoder_angle/DEG_TO_RAD;
 }
 
 double getRad(){
@@ -221,24 +221,27 @@ void updateCoords(){
 	double angle = getRad();
 	double delta_angle = angle-prev_angle;
 	//tracked values in inches(ideal centidegrees to inches conversion: 2.75*pi/36000)
-	double curr_y_encoder = (left_rot_pos()+right_rot_pos())/2;
-	double curr_x_encoder = back_rot_pos();
-	int delta_local_y = (curr_y_encoder-prev_y_encoder);
-	int delta_local_x = (curr_x_encoder-prev_x_encoder);// - TRACKER_DISTANCE_BACK*getAngle();
-	int distance = sqrt(pow(delta_local_y,2)+pow(delta_local_x,2));
+	double curr_x_encoder = (left_rot_pos()+right_rot_pos())/2;
+	double curr_y_encoder = back_rot_pos();
+	double delta_local_x = (curr_x_encoder-prev_x_encoder);
+	double delta_local_y = (curr_y_encoder-prev_y_encoder);// - TRACKER_DISTANCE_BACK*getAngle();
+	double distance = sqrt(pow(delta_local_y,2)+pow(delta_local_x,2));
 	//account for backwards movement
-	if(delta_local_y < 0) angle += M_PI;
-	double adjustment = atan((delta_local_x)/(delta_local_y));
+	if(delta_local_x < 0) angle += M_PI;
+	double adjustment = atan2(delta_local_y,delta_local_x);
 	adjustment = (std::isnan(adjustment)) ? M_PI/2 : adjustment;
-	angle -= adjustment;
+	angle += adjustment;
+	pros::lcd::set_text(1, std::to_string(angle/DEG_TO_RAD));
 	/*pros::lcd::set_text(1, std::to_string((getRad()-adjustment)));
 	pros::lcd::set_text(2, std::to_string(getRad()));
 	pros::lcd::set_text(3, std::to_string(adjustment));
 	pros::lcd::set_text(4, std::to_string(cos(getRad() - adjustment)));*/
-	pros::lcd::set_text(5, std::to_string(cos(angle)*distance*ENC_TO_INCH));
-	pros::lcd::set_text(6, std::to_string(sin(angle)*distance*ENC_TO_INCH));
-	double dx = (std::isnan(cos(angle)*distance*ENC_TO_INCH)) ? 0 : cos(angle)*distance*ENC_TO_INCH;
-	double dy = (std::isnan(sin(angle)*distance*ENC_TO_INCH)) ? 0 : sin(angle)*distance*ENC_TO_INCH;
+	//pros::lcd::set_text(5, std::to_string(cos(angle)*distance*ENC_TO_INCH));
+	//pros::lcd::set_text(6, std::to_string(sin(angle)*distance*ENC_TO_INCH));
+	//double dx = (std::isnan(cos(angle)*distance*ENC_TO_INCH)) ? 0 : cos(angle)*distance*ENC_TO_INCH;
+	//double dy = (std::isnan(sin(angle)*distance*ENC_TO_INCH)) ? 0 : sin(angle)*distance*ENC_TO_INCH;
+	double dx = cos(angle)*distance*ENC_TO_INCH;
+	double dy = sin(angle)*distance*ENC_TO_INCH;
 	pos_x += dx;
 	pos_y += dy;
 	prev_x_encoder = curr_x_encoder;
@@ -359,13 +362,15 @@ void driveBetter(double targetx, double targety, double tolerance, double kP, do
 		double dir = cos(a)/fabs(cos(a));
 
 		double error = dir*sqrt(pow(targety-pos_y,2)+pow(targetx-pos_x,2));
-		double derivative = error-preverror;
+		double derivative = error - preverror;
 		double pwr = error*kP + integral*kI + derivative*kD;
 		preverror = error;
 		integral += error;
 
 		setDriveMotors(pwr,pwr);
-		pros::lcd::set_text(1, std::to_string(a));
+		pros::lcd::set_text(1, std::to_string(dir));
+		pros::lcd::set_text(2, std::to_string(error));
+		pros::lcd::set_text(3, std::to_string(getAngle()));
 
 		if (pros::millis()-ref > time || (fabs(error) < tolerance && driveLeft1.is_stopped())) stop = true;
 		pros::delay(10);
@@ -519,7 +524,7 @@ void competition_initialize() {}
 
 void autonomous() {
 	//auton3();
-	driveBetter(10,0,1,15,0,0,5000);
+	driveBetter(6,0,1,15,0,0,5000);
 	//pidref:
 	//setAngle(-180, 0.1, 50, 0, 300, 5000);
 	//drive(200000,0,500,0.015,0,0.082,5000);
@@ -535,6 +540,8 @@ void opcontrol() {
 		//pros::lcd::set_text(1, std::to_string(getAngle()));
 		pros::lcd::set_text(2, "y: " + std::to_string(pos_y));
 		pros::lcd::set_text(3, "x: " + std::to_string(pos_x));
+		pros::lcd::set_text(4, "ly: " + std::to_string(back_rot_pos()*ENC_TO_INCH));
+		pros::lcd::set_text(5, "lx: " + std::to_string(((left_rot_pos() + right_rot_pos())/2)*ENC_TO_INCH));
 
 		//updateCoords();
 		pros::delay(10);
