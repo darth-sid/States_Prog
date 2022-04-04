@@ -29,6 +29,7 @@
 
 #define ENC_TO_INCH (2.75*M_PI/36000)
 #define DEG_TO_RAD M_PI/180
+#define RAD_TO_DEG 180/M_PI
 
 #define TRACKER_DISTANCE 3.375
 #define TRACKER_DISTANCE_BACK 1
@@ -124,7 +125,6 @@ void setDriveMotors(int l, int r) {
 void setDrive() {
 	int leftJoystickYInput = Vcontroller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
 	int leftJoystickXInput = Vcontroller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_X);//*dir;
-	pros::lcd::set_text(1, std::to_string(leftJoystickYInput));
   //Deadzones (10,10)
   if (abs(leftJoystickYInput) < 10) {
     leftJoystickYInput = 0;
@@ -209,7 +209,7 @@ double getAngle(){
 	double TRACKER_SCALAR = 1;
 	double encoder_angle = ((right_rot_pos()*ENC_TO_INCH - left_rot_pos()*ENC_TO_INCH)/(TRACKER_DISTANCE))*TRACKER_SCALAR;
   //return inertial.get_rotation();
-  return encoder_angle/DEG_TO_RAD;
+  return encoder_angle*RAD_TO_DEG;
 }
 
 double getRad(){
@@ -227,11 +227,11 @@ void updateCoords(){
 	double delta_local_y = (curr_y_encoder-prev_y_encoder);// - TRACKER_DISTANCE_BACK*getAngle();
 	double distance = sqrt(pow(delta_local_y,2)+pow(delta_local_x,2));
 	//account for backwards movement
-	if(delta_local_x < 0) angle += M_PI;
+	//if(delta_local_x < 0) angle += M_PI;
 	double adjustment = atan2(delta_local_y,delta_local_x);
 	adjustment = (std::isnan(adjustment)) ? M_PI/2 : adjustment;
 	angle += adjustment;
-	pros::lcd::set_text(1, std::to_string(angle/DEG_TO_RAD));
+	//pros::lcd::set_text(1, "a: " + std::to_string(angle*RAD_TO_DEG));
 	/*pros::lcd::set_text(1, std::to_string((getRad()-adjustment)));
 	pros::lcd::set_text(2, std::to_string(getRad()));
 	pros::lcd::set_text(3, std::to_string(adjustment));
@@ -342,8 +342,37 @@ float curv(float pts[][2], int pti){
   return 1/r;
 }
 
-void driveBetter(double targetx, double targety, double tolerance, double kP, double kI, double kD, double time){
-	double target_angle = atan(targety/targetx);
+void pivot(double targeta, double tolerance, double kP){
+	while (fabs(targeta-getAngle()) > tolerance){
+		setDriveMotors(std::max(0,getAngle()-targeta)*kP,std::max(0,targeta-getAngle())*kP);
+	}
+}
+
+void fuckPID(double distance, double hold_angle, double kA){
+	double rx = (right_rot_pos() + left_rot_pos())/2;
+	double lx = (right_rot_pos() + left_rot_pos())/2 - rx;
+	while (lx < distance){
+		double angdiff = hold_angle - getAngle();
+		setDriveMotors(127-angdiff*kA,127+angdiff*kA);
+	}
+}
+//fuck pid ong
+void ghettoDrive(double targetx, double targety, double endA, double tolA, double kA){
+	double target_a = atan2(targety,targetx);
+	while (fabs(target_angle-getAngle()) > tolA){
+		target_a = atan2(targety,targetx);
+		setDriveMotors(std::max(0,getAngle()-targeta)*kA,std::max(0,targeta-getAngle())*kA);
+	}
+	double distance = sqrt(pow(targety-pos_y,2)+pow(targetx-pos_x,2));
+	fuckPID(distance,atan2(targety,targetx),1);
+	while (fabs(endA-getAngle()) > tolA){
+		setDriveMotors(std::max(0,getAngle()-endA)*kA,std::max(0,endA-getAngle())*kA);
+	}
+}
+
+
+void driveBetter(double targetx, double targety, double tolerance, double kP, double kI, double kD, double kT, double time){
+	double target_angle = atan2(targety,targetx);
 	//tune constants
 	setAngle(target_angle,10,1,0,3,5000);
 
@@ -356,21 +385,25 @@ void driveBetter(double targetx, double targety, double tolerance, double kP, do
 
 	while(!stop){
 		updateCoords();
-		double a = atan((targetx-pos_x)/(targety-pos_y)) - getRad();
-		a += M_PI/4;
+		double a = atan2(targety-pos_y,targetx-pos_x) - getRad();
+		double b = (90-(getRad()-atan2(targety-pos_y,targetx-pos_x))*RAD_TO_DEG)/90;
+		//a += M_PI/4;
 		//double dir = (a > (getAngle()+90)%360 && a < (getAngle()+270)%360) ? ;
 		double dir = cos(a)/fabs(cos(a));
 
 		double error = dir*sqrt(pow(targety-pos_y,2)+pow(targetx-pos_x,2));
 		double derivative = error - preverror;
 		double pwr = error*kP + integral*kI + derivative*kD;
+		pwr = std::min(110.0,pwr);
 		preverror = error;
 		integral += error;
-
-		setDriveMotors(pwr,pwr);
-		pros::lcd::set_text(1, std::to_string(dir));
-		pros::lcd::set_text(2, std::to_string(error));
-		pros::lcd::set_text(3, std::to_string(getAngle()));
+		b = (fabs(b) < pwr) ? b : 0;
+		setDriveMotors(pwr/(b*kT),pwr*(b*kT));
+		pros::lcd::set_text(1, "e:" + std::to_string(error));
+		pros::lcd::set_text(2, std::to_string(pwr/(b*kT)));
+		pros::lcd::set_text(3, std::to_string(pwr*(b*kT)));
+		pros::lcd::set_text(4, std::to_string(b));
+		pros::lcd::set_text(7,"not quite");
 
 		if (pros::millis()-ref > time || (fabs(error) < tolerance && driveLeft1.is_stopped())) stop = true;
 		pros::delay(10);
@@ -524,7 +557,8 @@ void competition_initialize() {}
 
 void autonomous() {
 	//auton3();
-	driveBetter(6,0,1,15,0,0,5000);
+	driveBetter(20,-20,1,5,0,0,0.5,50000);
+	pros::lcd::set_text(7,"done");
 	//pidref:
 	//setAngle(-180, 0.1, 50, 0, 300, 5000);
 	//drive(200000,0,500,0.015,0,0.082,5000);
@@ -538,10 +572,18 @@ void opcontrol() {
 		setDrive();
 		clamps();
 		//pros::lcd::set_text(1, std::to_string(getAngle()));
+		double a = atan2(0-pos_y,20-pos_x) - getRad();
+		double dir = cos(a)/fabs(cos(a));
+		double error = dir*sqrt(pow(0-pos_y,2)+pow(20-pos_x,2));
+
+		pros::lcd::set_text(1, "d: " + std::to_string(error));
+
 		pros::lcd::set_text(2, "y: " + std::to_string(pos_y));
 		pros::lcd::set_text(3, "x: " + std::to_string(pos_x));
-		pros::lcd::set_text(4, "ly: " + std::to_string(back_rot_pos()*ENC_TO_INCH));
-		pros::lcd::set_text(5, "lx: " + std::to_string(((left_rot_pos() + right_rot_pos())/2)*ENC_TO_INCH));
+		pros::lcd::set_text(4, "ly: " + std::to_string(back_rot_pos()));
+		pros::lcd::set_text(5, "lx: " + std::to_string(((left_rot_pos() + right_rot_pos())/2)));
+		pros::lcd::set_text(6, "err: " + std::to_string(error));
+		pros::lcd::set_text(7, "t: " + std::to_string(a*RAD_TO_DEG));
 
 		//updateCoords();
 		pros::delay(10);
