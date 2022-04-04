@@ -370,11 +370,11 @@ void ghettoDrive(double targetx, double targety, double endA, double tolA, doubl
 	}
 }
 
-
+//HIHIHIHIHIHIDRIVEDRIVEDRIVEDRIVEHIAMRITHFIXFIXIFXIFXIFXIFXIx
 void driveBetter(double targetx, double targety, double tolerance, double kP, double kI, double kD, double kT, double time){
 	double target_angle = atan2(targety,targetx);
 	//tune constants
-	setAngle(target_angle,10,1,0,3,5000);
+	//setAngle(target_angle,10,1,0,3,5000);
 
 	brake_hold();
 	bool stop = false;
@@ -400,8 +400,8 @@ void driveBetter(double targetx, double targety, double tolerance, double kP, do
 		b = (fabs(b) < pwr) ? b : 0;
 		setDriveMotors(pwr/(b*kT),pwr*(b*kT));
 		pros::lcd::set_text(1, "e:" + std::to_string(error));
-		pros::lcd::set_text(2, std::to_string(pwr/(b*kT)));
-		pros::lcd::set_text(3, std::to_string(pwr*(b*kT)));
+		pros::lcd::set_text(2, std::to_string(pwr - (b*kT)));
+		pros::lcd::set_text(3, std::to_string(pwr + (b*kT)));
 		pros::lcd::set_text(4, std::to_string(b));
 		pros::lcd::set_text(7,"not quite");
 
